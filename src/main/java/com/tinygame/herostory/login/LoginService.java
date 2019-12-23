@@ -1,12 +1,15 @@
 package com.tinygame.herostory.login;
 
+import com.alibaba.fastjson.JSONObject;
 import com.tinygame.herostory.ASyncOperationProcessor;
 import com.tinygame.herostory.IASyncOperation;
 import com.tinygame.herostory.MySqlSessionFactory;
 import com.tinygame.herostory.login.db.IUserDao;
 import com.tinygame.herostory.login.db.UserEntity;
+import com.tinygame.herostory.util.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
+import redis.clients.jedis.Jedis;
 
 import java.util.function.Function;
 
@@ -48,7 +51,7 @@ public class LoginService {
                 null == password) {
         }
 
-        ASyncOperationProcessor.getInstance().process(new LoginAsyncOperation(userName, password){
+        ASyncOperationProcessor.getInstance().process(new LoginAsyncOperation(userName, password) {
             @Override
             public void doFinish() {
                 callback.apply(this.getUserEntity());
@@ -121,9 +124,40 @@ public class LoginService {
                     dao.insertInto(userEntity);
                 }
                 _userEntity = userEntity;
+
+                // 更新 Redis 中的用户基本信息
+                LoginService.getInstance().updateUserBasicInfoInRedis(userEntity);
             } catch (Exception ex) {
                 log.error(ex.getMessage(), ex);
             }
+        }
+    }
+
+    /**
+     * 更新 Redis 中的用户基本信息
+     *
+     * @param userEntity 用户实体
+     */
+    private void updateUserBasicInfoInRedis(UserEntity userEntity) {
+        if (null == userEntity ||
+                userEntity.userId <= 0) {
+            return;
+        }
+
+        try (Jedis redis = RedisUtil.getJedis()) {
+            // 获取用户 Id
+            int userId = userEntity.userId;
+
+            // 创建 JSON 对象
+            JSONObject jsonObj = new JSONObject();
+            jsonObj.put("userId", userId);
+            jsonObj.put("userName", userEntity.userName);
+            jsonObj.put("heroAvatar", userEntity.heroAvatar);
+
+            // 更新 Redis 数据
+            redis.hset("User_" + userId, "BasicInfo", jsonObj.toJSONString());
+        } catch (Exception ex) {
+            log.error(ex.getMessage(), ex);
         }
     }
 }

@@ -3,6 +3,8 @@ package com.tinygame.herostory.cmdHandler;
 import com.tinygame.herostory.Broadcaster;
 import com.tinygame.herostory.model.User;
 import com.tinygame.herostory.model.UserManager;
+import com.tinygame.herostory.mq.MQProducer;
+import com.tinygame.herostory.mq.VictorMsg;
 import com.tinygame.herostory.msg.GameMsgProtocol;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.AttributeKey;
@@ -65,6 +67,17 @@ public class UserAttkCmdHandler implements ICmdHandler<GameMsgProtocol.UserAttkC
         if(targetUser.getCurrHp() <= 0) {
             //广播死亡消息
             broadcastDie(targetUserId);
+
+            if(!targetUser.isDied()) {
+                // 设置死亡标志
+                targetUser.setDied(true);
+
+                // 发送消息到 MQ
+                VictorMsg mqMsg = new VictorMsg();
+                mqMsg.winnerId = attkUserId;
+                mqMsg.loserId = targetUserId;
+                MQProducer.sendMsg("Victor", mqMsg);
+            }
         }
     }
 
